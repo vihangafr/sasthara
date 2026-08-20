@@ -13,8 +13,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400&display=swap" rel="stylesheet">
     
-    <!-- MediaPipe AI Libraries (Version Pinned for 100% Reliability) -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/face_detection.js" crossorigin="anonymous"></script>
+    <!-- MediaPipe AI Libraries (Updated to latest stable version to prevent iOS WebGL crashes) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
 
     <style>
         body {
@@ -129,10 +129,10 @@
             Sastra
         </h1>
 
-        <!-- Error Message Box -->
-        <div id="error_box" class="hidden absolute flex flex-col items-center text-red-900 gap-4">
+        <!-- Error Message Box (Modified to display longer error logs) -->
+        <div id="error_box" class="hidden absolute flex flex-col items-center text-red-900 gap-4 max-w-xs text-center">
             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-            <span id="error_message" class="text-xs tracking-[0.2em]">CAMERA ACCESS DENIED</span>
+            <span id="error_message" class="text-xs tracking-[0.2em] uppercase">CAMERA ACCESS DENIED</span>
         </div>
     </div>
 
@@ -198,9 +198,8 @@
 
             // Smooth progress bar animator
             const updateProgress = () => {
-                currentProgress += (targetProgress - currentProgress) * 0.05; // Ease towards target
+                currentProgress += (targetProgress - currentProgress) * 0.05;
                 
-                // Hard cap at 99% until the AI actually confirms it's working
                 if (currentProgress > 99 && !aiInitialized) currentProgress = 99; 
                 
                 progressBar.style.width = `${currentProgress}%`;
@@ -214,8 +213,9 @@
                 }
             };
 
+            // Ensure locateFile points to the same unpinned version
             const faceDetection = new FaceDetection({locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/${file}`;
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
             }});
 
             faceDetection.setOptions({
@@ -225,11 +225,9 @@
 
             faceDetection.onResults((results) => {
                 if (!aiInitialized) {
-                    // AI is officially working! Push progress to 100%
                     aiInitialized = true;
                     targetProgress = 100;
                     
-                    // Small delay to let the user see the 100% text before switching UI
                     setTimeout(() => {
                         loadingSection.classList.add('hidden');
                         videoContainer.classList.remove('opacity-0');
@@ -303,12 +301,10 @@
                 loadingSection.classList.remove('hidden');
                 setStatus('LOADING');
 
-                // Start progress animation
-                targetProgress = 30; // Requesting permissions phase
+                targetProgress = 20; 
                 requestAnimationFrame(updateProgress);
 
                 try {
-                    // Force strict iOS attributes directly in JS
                     videoElement.setAttribute('autoplay', '');
                     videoElement.setAttribute('muted', '');
                     videoElement.setAttribute('playsinline', '');
@@ -318,7 +314,7 @@
                     });
                     videoElement.srcObject = stream;
                     
-                    targetProgress = 60; // Camera acquired, waiting for buffer
+                    targetProgress = 50; 
 
                     await new Promise((resolve) => {
                         videoElement.onloadedmetadata = () => {
@@ -337,48 +333,43 @@
                         checkVideoDimensions();
                     });
 
-                    targetProgress = 95; // Video playing, downloading AI models
-                    setStatus('CALIBRATING');
+                    targetProgress = 80; 
 
-                    // Create an invisible canvas. Drawing video to canvas first prevents 
-                    // 99% of iOS WebGL crashes when passing data to the AI model.
-                    const offscreenCanvas = document.createElement('canvas');
-                    const ctx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+                    // CRITICAL FIX: Explicitly wait for AI WASM/Models to finish downloading
+                    // before attempting to feed it any camera frames.
+                    await faceDetection.initialize();
+
+                    targetProgress = 95; 
+                    setStatus('CALIBRATING');
                     
                     let isDetecting = false;
                     let consecutiveErrors = 0;
 
                     const processFrame = async () => {
-                        if (!videoElement.paused && !videoElement.ended && videoElement.readyState >= 2) {
+                        if (!videoElement.paused && !videoElement.ended && videoElement.readyState >= 2 && videoElement.videoWidth > 0) {
                             if (!isDetecting) {
                                 isDetecting = true;
                                 try {
-                                    // 1. Draw safe image to canvas
-                                    offscreenCanvas.width = videoElement.videoWidth;
-                                    offscreenCanvas.height = videoElement.videoHeight;
-                                    ctx.drawImage(videoElement, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
-                                    
-                                    // 2. Send perfectly clean canvas to AI
-                                    await faceDetection.send({ image: offscreenCanvas });
-                                    consecutiveErrors = 0; // Reset errors on success
+                                    // Send native video element directly, avoiding canvas rendering bugs
+                                    await faceDetection.send({ image: videoElement });
+                                    consecutiveErrors = 0; 
                                 } catch (e) {
                                     console.error("AI Error:", e);
                                     consecutiveErrors++;
                                     
-                                    // If AI fails multiple times in a row, halt and show error
                                     if (!aiInitialized && consecutiveErrors > 5) {
                                         loadingSection.classList.add('hidden');
                                         errorBox.classList.remove('hidden');
-                                        errorMessage.innerText = "AI INITIALIZATION FAILED";
+                                        // Display exact error string to help with debugging
+                                        errorMessage.innerText = "ERROR: " + (e.message || "UNKNOWN FAILURE");
                                         setStatus('ERROR');
-                                        return; // Kill the loop entirely
+                                        return; 
                                     }
                                 }
                                 isDetecting = false;
                             }
                         }
                         
-                        // Continue loop using optimal frame timing API if available
                         if (aiInitialized || consecutiveErrors <= 5) {
                             if (videoElement.requestVideoFrameCallback) {
                                 videoElement.requestVideoFrameCallback(processFrame);
@@ -388,12 +379,11 @@
                         }
                     };
                     
-                    // Ignite loop
                     processFrame();
 
                 } catch (error) {
-                    console.error("Camera Error:", error);
-                    targetProgress = 0; // Reset progress
+                    console.error("Camera/Init Error:", error);
+                    targetProgress = 0; 
                     loadingSection.classList.add('hidden');
                     errorBox.classList.remove('hidden');
                     setStatus('ERROR');
@@ -401,7 +391,7 @@
                     if (error.name === 'NotAllowedError') {
                         errorMessage.innerText = "CAMERA ACCESS DENIED";
                     } else {
-                        errorMessage.innerText = "HARDWARE UNAVAILABLE";
+                        errorMessage.innerText = error.message || "HARDWARE UNAVAILABLE";
                     }
                 }
             });

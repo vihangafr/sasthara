@@ -13,8 +13,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400&display=swap" rel="stylesheet">
     
-    <!-- MediaPipe AI Libraries (Updated to latest stable version to prevent iOS WebGL crashes) -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
+    <!-- MediaPipe AI Libraries (PINNED to stable version to prevent WASM Abort errors) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/face_detection.js" crossorigin="anonymous"></script>
 
     <style>
         body {
@@ -163,6 +163,9 @@
             let aiInitialized = false;
             let boundingBoxElement = null;
             
+            const offscreenCanvas = document.createElement('canvas');
+            const offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+            
             let targetProgress = 0;
             let currentProgress = 0;
 
@@ -196,26 +199,9 @@
                 }
             };
 
-            // Smooth progress bar animator
-            const updateProgress = () => {
-                currentProgress += (targetProgress - currentProgress) * 0.05;
-                
-                if (currentProgress > 99 && !aiInitialized) currentProgress = 99; 
-                
-                progressBar.style.width = `${currentProgress}%`;
-                progressText.innerText = `${Math.floor(currentProgress)}%`;
-                
-                if (currentProgress < 99.9 || !aiInitialized) {
-                    requestAnimationFrame(updateProgress);
-                } else {
-                    progressBar.style.width = `100%`;
-                    progressText.innerText = `100%`;
-                }
-            };
-
-            // Ensure locateFile points to the same unpinned version
+            // Ensure locateFile points to the EXACT pinned version to prevent WASM Abort
             const faceDetection = new FaceDetection({locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/${file}`;
             }});
 
             faceDetection.setOptions({
@@ -350,8 +336,14 @@
                             if (!isDetecting) {
                                 isDetecting = true;
                                 try {
-                                    // Send native video element directly, avoiding canvas rendering bugs
-                                    await faceDetection.send({ image: videoElement });
+                                    // CRITICAL iOS FIX: Draw video to canvas first.
+                                    // Safari WebGL crashes with ABORT() if given raw video elements directly.
+                                    offscreenCanvas.width = videoElement.videoWidth;
+                                    offscreenCanvas.height = videoElement.videoHeight;
+                                    offscreenCtx.drawImage(videoElement, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
+
+                                    // Send the stable canvas context to the AI, avoiding Safari hardware bugs
+                                    await faceDetection.send({ image: offscreenCanvas });
                                     consecutiveErrors = 0; 
                                 } catch (e) {
                                     console.error("AI Error:", e);

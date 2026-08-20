@@ -78,6 +78,17 @@
       z-index: 1;
     }
     
+    #overlayCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 5;
+      pointer-events: none;
+      transform: scaleX(-1); /* Match video mirror */
+    }
+    
     .overlay {
       position: absolute;
       inset: 0;
@@ -210,6 +221,7 @@
   <div class="container">
     <div class="video-wrapper" id="videoWrapper">
       <video id="video" autoplay muted playsinline></video>
+      <canvas id="overlayCanvas"></canvas>
       <div class="overlay">
         <div class="sastra-text" id="sastraText">Sastra</div>
       </div>
@@ -234,6 +246,7 @@
 
   <script>
     const video = document.getElementById('video');
+    const overlayCanvas = document.getElementById('overlayCanvas');
     const videoWrapper = document.getElementById('videoWrapper');
     const sastraText = document.getElementById('sastraText');
     const statusText = document.getElementById('statusText');
@@ -257,7 +270,8 @@
       try {
         statusDot.className = 'status-dot loading';
         
-        const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+        // Switch to the most universally reliable CDN for these weights
+        const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
         
         await faceapi.tf.setBackend('webgl');
         await faceapi.tf.ready();
@@ -290,6 +304,12 @@
         // Wait for metadata to ensure the video has dimensions, then force play
         video.onloadedmetadata = async () => {
           try {
+            // Critical fix for face-api: explicitly set intrinsic dimensions
+            video.width = video.videoWidth;
+            video.height = video.videoHeight;
+            overlayCanvas.width = video.videoWidth;
+            overlayCanvas.height = video.videoHeight;
+            
             await video.play();
             isRunning = true;
             startBtn.disabled = true;
@@ -316,7 +336,15 @@
         if (video.videoWidth > 0 && video.videoHeight > 0) {
           const detections = await faceapi.detectAllFaces(video, options);
           
+          // Clear the canvas each frame
+          const ctx = overlayCanvas.getContext('2d');
+          ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+          
           if (detections && detections.length > 0) {
+            // Draw a visual box so you can see if the AI is actually working
+            const resizedDetections = faceapi.resizeResults(detections, { width: video.width, height: video.height });
+            faceapi.draw.drawDetections(overlayCanvas, resizedDetections);
+            
             sastraText.classList.add('visible');
             videoWrapper.classList.add('detecting');
             
@@ -336,6 +364,7 @@
         }
       } catch (error) {
         console.warn('Detection skipped this frame:', error);
+        updateStatus('Detection error', 'status-dot');
       }
       
       if (isRunning) {
@@ -355,6 +384,8 @@
       }
       
       video.srcObject = null;
+      const ctx = overlayCanvas.getContext('2d');
+      ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
       sastraText.classList.remove('visible');
       videoWrapper.classList.remove('detecting');
       
@@ -368,7 +399,12 @@
       statusDot.className = dotClass;
     }
     
-    startBtn.addEventListener('click', startCamera);
+    // Unlock speech synthesis immediately on user interaction (fixes browser audio blocking)
+    startBtn.addEventListener('click', () => {
+       const unlock = new SpeechSynthesisUtterance('');
+       window.speechSynthesis.speak(unlock);
+       startCamera();
+    });
     stopBtn.addEventListener('click', stopCamera);
     
     window.addEventListener('DOMContentLoaded', initializeFaceApi);

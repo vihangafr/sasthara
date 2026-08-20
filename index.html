@@ -272,29 +272,19 @@
     
     // Function to call a FREE AI API (Pollinations) that requires NO API KEY
     async function generateSastraFromAI() {
-      const systemPrompt = "You are a deeply traditional and mystical Sri Lankan astrologer and face reader. Read the person's face.";
-      const userPrompt = "Write a short, realistic 'Sastra' (face reading/fortune) in Sinhala. It should be exactly 2-3 sentences long. First, mention a facial feature (like eyes, forehead, or smile). Second, mention a hidden personality trait. Finally, give a hopeful but mysterious prediction for their near future. DO NOT use English words. ONLY output the Sinhala text.";
-
-      // Pollinations.ai is a free public API that doesn't require any API keys
-      const apiUrl = "https://text.pollinations.ai/";
+      // Create a single, strong prompt and encode it into the URL directly
+      const prompt = "You are a mystical Sri Lankan astrologer. Write exactly 2 short sentences in Sinhala giving a face reading (sastra). Mention a facial feature, a personality trait, and a short prediction for their future. ONLY output Sinhala text. No English.";
+      
+      // Pollinations works best as a simple GET request with the prompt in the URL
+      const apiUrl = "https://text.pollinations.ai/" + encodeURIComponent(prompt);
 
       try {
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt }
-            ]
-          })
-        });
+        const response = await fetch(apiUrl);
         
         if (!response.ok) {
           throw new Error("Network response was not ok");
         }
         
-        // Pollinations is beautifully simple and returns the raw AI text directly
         const aiText = await response.text();
         
         if (aiText && aiText.trim().length > 0) {
@@ -403,7 +393,7 @@
               sastraText.textContent = "ඔබේ දේහ ලක්ෂණ කියවමින් පවතී..."; // "Reading your features..."
               sastraText.classList.add('visible');
               
-              // Call the Gemini AI
+              // Call the free AI
               generateSastraFromAI().then(aiSastra => {
                 isFetching = false;
                 isReading = true;
@@ -411,21 +401,24 @@
                 // Update text on screen with the real AI response
                 sastraText.textContent = aiSastra;
                 
-                const utterance = new SpeechSynthesisUtterance(aiSastra);
-                utterance.lang = 'si-LK'; // Set language to Sinhala
-                utterance.pitch = 0.4; // Slightly deep
-                utterance.rate = 0.8;  // Deliberate, mystical pacing
+                // Attempt to speak (Wrapped in try/catch so it doesn't break if Sinhala isn't supported)
+                try {
+                  const utterance = new SpeechSynthesisUtterance(aiSastra);
+                  utterance.lang = 'si-LK'; 
+                  utterance.pitch = 0.4; 
+                  utterance.rate = 0.8;  
+                  window.speechSynthesis.speak(utterance);
+                } catch(err) {
+                  console.warn("Text-to-speech failed or unsupported:", err);
+                }
                 
-                utterance.onend = () => {
-                  // Keep the text visible for a moment after speaking, then fade out
-                  setTimeout(() => {
-                    sastraText.classList.remove('visible');
-                    // Add a longer cooldown before the next reading
-                    setTimeout(() => { isReading = false; }, 5000);
-                  }, 3000);
-                };
-                
-                window.speechSynthesis.speak(utterance);
+                // FIX: Use a guaranteed timer to remove the text, rather than waiting for speech to finish.
+                // This ensures the app never freezes if the device lacks a Sinhala voice.
+                setTimeout(() => {
+                  sastraText.classList.remove('visible');
+                  // Add a cooldown before the next reading
+                  setTimeout(() => { isReading = false; }, 4000);
+                }, 8000); // Keep text on screen for 8 seconds
               });
             }
           } else {

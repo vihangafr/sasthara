@@ -1,242 +1,359 @@
-<style>
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sastra Face AI</title>
   
-  body {
-    background: #0a0a0a;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    color: #ffffff;
-  }
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400&display=swap" rel="stylesheet">
   
-  .container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-    padding: 20px;
-  }
-  
-  .video-container {
-    position: relative;
-    width: 100%;
-    max-width: 500px;
-    aspect-ratio: 4 / 3;
-    background: #1a1a1a;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
-  }
-  
-  #video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-  
-  .overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-  }
-  
-  .sastra-text {
-    font-size: 72px;
-    font-weight: 300;
-    letter-spacing: 2px;
-    color: #ffffff;
-    opacity: 0;
-    transition: opacity 0.3s ease-in-out;
-    text-transform: uppercase;
-  }
-  
-  .sastra-text.visible {
-    opacity: 1;
-  }
-  
-  .status {
-    margin-top: 24px;
-    text-align: center;
-  }
-  
-  .status-text {
-    font-size: 14px;
-    color: #888888;
-    font-weight: 400;
-    letter-spacing: 0.5px;
-  }
-  
-  .status-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    background: #4a9eff;
-    border-radius: 50%;
-    margin-right: 8px;
-    animation: pulse 2s infinite;
-  }
-  
-  @keyframes pulse {
-    0%, 100% {
-      opacity: 0.5;
-    }
-    50% {
-      opacity: 1;
-    }
-  }
-  
-  .controls {
-    margin-top: 24px;
-    display: flex;
-    gap: 12px;
-  }
-  
-  button {
-    padding: 10px 20px;
-    background: transparent;
-    border: 1px solid #444444;
-    color: #888888;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
-    transition: all 0.2s ease-in-out;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  
-  button:hover {
-    border-color: #666666;
-    color: #cccccc;
-  }
-  
-  button:active {
-    scale: 0.98;
-  }
-  
-  .info {
-    margin-top: 20px;
-    font-size: 12px;
-    color: #666666;
-    text-align: center;
-    max-width: 400px;
-  }
-</style>
+  <!-- Using an actively maintained fork of face-api.js for reliable model loading -->
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
 
-<div class="container">
-  <div class="video-container">
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas" style="display: none;"></canvas>
-    <div class="overlay">
-      <div class="sastra-text" id="sastraText">Sastra</div>
+  <style>
+    :root {
+      --bg-color: #050505;
+      --container-bg: #0f0f0f;
+      --text-main: #ffffff;
+      --text-muted: #666666;
+      --accent: #ffffff;
+      --border: rgba(255, 255, 255, 0.1);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      background-color: var(--bg-color);
+      font-family: 'Inter', -apple-system, sans-serif;
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 2rem;
+      max-width: 800px;
+    }
+    
+    .video-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 560px;
+      aspect-ratio: 4 / 3;
+      background: var(--container-bg);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+      border: 1px solid var(--border);
+      transition: border-color 0.4s ease;
+    }
+    
+    .video-wrapper.detecting {
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    #video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transform: scaleX(-1); /* Mirror the video for natural feel */
+      filter: grayscale(20%) contrast(110%);
+    }
+    
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      background: radial-gradient(circle, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.6) 100%);
+    }
+    
+    .sastra-text {
+      font-size: clamp(3rem, 8vw, 5rem);
+      font-weight: 200;
+      letter-spacing: 0.5em;
+      margin-right: -0.5em; /* Compensate for letter spacing alignment */
+      color: var(--text-main);
+      opacity: 0;
+      transform: translateY(10px) scale(0.98);
+      transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      text-transform: uppercase;
+      text-shadow: 0 4px 20px rgba(0,0,0,0.8);
+    }
+    
+    .sastra-text.visible {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      letter-spacing: 0.6em;
+      margin-right: -0.6em;
+    }
+    
+    .status-panel {
+      margin-top: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: background-color 0.3s ease;
+    }
+
+    .status-dot.active {
+      background: #4ade80;
+      box-shadow: 0 0 10px rgba(74, 222, 128, 0.5);
+      animation: pulse 2s infinite ease-in-out;
+    }
+    
+    .status-dot.loading {
+      background: #60a5fa;
+      box-shadow: 0 0 10px rgba(96, 165, 250, 0.5);
+      animation: pulse 1s infinite ease-in-out;
+    }
+    
+    .status-text {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      font-weight: 300;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+    
+    .controls {
+      display: flex;
+      gap: 1rem;
+    }
+    
+    button {
+      padding: 0.75rem 2rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 400;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-family: inherit;
+    }
+    
+    button:hover:not(:disabled) {
+      border-color: var(--text-main);
+      color: var(--text-main);
+      background: rgba(255,255,255,0.02);
+    }
+    
+    button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+    
+    .info {
+      margin-top: 2rem;
+      font-size: 0.75rem;
+      color: #444;
+      text-align: center;
+      max-width: 400px;
+      line-height: 1.6;
+      font-weight: 300;
+    }
+
+    /* Media query for smaller screens */
+    @media (max-width: 600px) {
+      .container { padding: 1rem; }
+      .video-wrapper { border-radius: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="video-wrapper" id="videoWrapper">
+      <video id="video" autoplay muted playsinline></video>
+      <div class="overlay">
+        <div class="sastra-text" id="sastraText">Sastra</div>
+      </div>
+    </div>
+    
+    <div class="status-panel">
+      <div class="status-indicator">
+        <span class="status-dot" id="statusDot"></span>
+        <span class="status-text" id="statusText">Initializing AI...</span>
+      </div>
+      
+      <div class="controls">
+        <button id="startBtn" disabled>Start Camera</button>
+        <button id="stopBtn" disabled>Stop</button>
+      </div>
+    </div>
+    
+    <div class="info">
+      Please grant camera access when prompted. The AI model runs entirely locally in your browser and will display "Sastra" when a human face is detected.
     </div>
   </div>
-  
-  <div class="status">
-    <span class="status-dot"></span>
-    <span class="status-text" id="statusText">Initializing...</span>
-  </div>
-  
-  <div class="controls">
-    <button id="startBtn">Start</button>
-    <button id="stopBtn" disabled>Stop</button>
-  </div>
-  
-  <div class="info">
-    Grant camera access to enable face detection. The AI will display "Sastra" when faces are detected.
-  </div>
-</div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/face-api.min.js"></script>
-<script>
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
-  const sastraText = document.getElementById('sastraText');
-  const statusText = document.getElementById('statusText');
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn = document.getElementById('stopBtn');
-  
-  let isRunning = false;
-  let stream = null;
-  
-  async function initializeFaceApi() {
-    try {
-      const MODEL_URL = 'https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/weights/';
-      await Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-      ]);
-      statusText.textContent = 'Ready to detect faces';
-      startBtn.disabled = false;
-    } catch (error) {
-      statusText.textContent = 'Failed to load face detection models';
-      console.error('Error loading models:', error);
-    }
-  }
-  
-  async function startCamera() {
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false 
-      });
-      video.srcObject = stream;
-      isRunning = true;
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      statusText.textContent = 'Camera active';
-      detectFaces();
-    } catch (error) {
-      statusText.textContent = 'Camera access denied';
-      console.error('Camera error:', error);
-    }
-  }
-  
-  async function detectFaces() {
-    if (!isRunning) return;
+  <script>
+    const video = document.getElementById('video');
+    const videoWrapper = document.getElementById('videoWrapper');
+    const sastraText = document.getElementById('sastraText');
+    const statusText = document.getElementById('statusText');
+    const statusDot = document.getElementById('statusDot');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
     
-    try {
-      const detections = await faceapi.detectAllFaces(
-        video,
-        new faceapi.TinyFaceDetectorOptions()
-      );
-      
-      if (detections.length > 0) {
-        sastraText.classList.add('visible');
-      } else {
-        sastraText.classList.remove('visible');
+    let isRunning = false;
+    let stream = null;
+    let detectionLoop = null;
+
+    // We use the tiny face detector for performance in the browser
+    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+    
+    async function initializeFaceApi() {
+      try {
+        statusDot.className = 'status-dot loading';
+        
+        // Using Vlad Mandic's reliable CDN for models
+        const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+        
+        // Initialize TensorFlow backend before loading models to prevent WASM/backend errors
+        await faceapi.tf.setBackend('webgl');
+        await faceapi.tf.ready();
+        
+        // Load just the tiny face detector for maximum performance and minimal footprint
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        
+        updateStatus('Ready', 'status-dot');
+        startBtn.disabled = false;
+      } catch (error) {
+        updateStatus('Model loading failed', 'status-dot');
+        console.error('Error loading models:', error);
       }
-    } catch (error) {
-      console.error('Detection error:', error);
     }
     
-    requestAnimationFrame(detectFaces);
-  }
-  
-  function stopCamera() {
-    isRunning = false;
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+    async function startCamera() {
+      try {
+        updateStatus('Requesting camera...', 'status-dot loading');
+        
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'user', 
+            width: { ideal: 640 }, 
+            height: { ideal: 480 } 
+          },
+          audio: false 
+        });
+        
+        video.srcObject = stream;
+        
+        // Wait for video to actually start playing before detecting
+        video.onplay = () => {
+          isRunning = true;
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+          updateStatus('Detecting', 'status-dot active');
+          detectFaces();
+        };
+
+      } catch (error) {
+        updateStatus('Camera access denied', 'status-dot');
+        console.error('Camera error:', error);
+      }
     }
-    video.srcObject = null;
-    sastraText.classList.remove('visible');
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-    statusText.textContent = 'Camera stopped';
-  }
-  
-  startBtn.addEventListener('click', startCamera);
-  stopBtn.addEventListener('click', stopCamera);
-  
-  initializeFaceApi();
-</script>
+    
+    async function detectFaces() {
+      if (!isRunning || video.paused || video.ended) return;
+      
+      try {
+        // Detect faces
+        const detections = await faceapi.detectAllFaces(video, options);
+        
+        // Update UI based on detections
+        if (detections && detections.length > 0) {
+          sastraText.classList.add('visible');
+          videoWrapper.classList.add('detecting');
+        } else {
+          sastraText.classList.remove('visible');
+          videoWrapper.classList.remove('detecting');
+        }
+      } catch (error) {
+        console.warn('Detection skipped this frame:', error);
+      }
+      
+      // Schedule next frame
+      if (isRunning) {
+        detectionLoop = requestAnimationFrame(detectFaces);
+      }
+    }
+    
+    function stopCamera() {
+      isRunning = false;
+      
+      if (detectionLoop) {
+        cancelAnimationFrame(detectionLoop);
+      }
+      
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      
+      video.srcObject = null;
+      sastraText.classList.remove('visible');
+      videoWrapper.classList.remove('detecting');
+      
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      updateStatus('Camera stopped', 'status-dot');
+    }
+
+    // Helper for updating status UI
+    function updateStatus(text, dotClass) {
+      statusText.textContent = text;
+      statusDot.className = dotClass;
+    }
+    
+    // Bind Event Listeners
+    startBtn.addEventListener('click', startCamera);
+    stopBtn.addEventListener('click', stopCamera);
+    
+    // Start initialization on load
+    window.addEventListener('DOMContentLoaded', initializeFaceApi);
+
+  </script>
+</body>
+</html>

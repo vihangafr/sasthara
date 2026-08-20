@@ -74,6 +74,8 @@
       display: block;
       transform: scaleX(-1); /* Mirror the video for natural feel */
       filter: grayscale(20%) contrast(110%);
+      position: relative;
+      z-index: 1;
     }
     
     .overlay {
@@ -84,6 +86,7 @@
       justify-content: center;
       pointer-events: none;
       background: radial-gradient(circle, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.6) 100%);
+      z-index: 10;
     }
     
     .sastra-text {
@@ -97,6 +100,7 @@
       transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
       text-transform: uppercase;
       text-shadow: 0 4px 20px rgba(0,0,0,0.8);
+      z-index: 20;
     }
     
     .sastra-text.visible {
@@ -240,6 +244,7 @@
     let isRunning = false;
     let stream = null;
     let detectionLoop = null;
+    let hasSpoken = false; // Add variable to track if it has spoken
 
     // Increased input size for better accuracy and significantly lowered 
     // the threshold so it triggers the text much more easily.
@@ -314,9 +319,19 @@
           if (detections && detections.length > 0) {
             sastraText.classList.add('visible');
             videoWrapper.classList.add('detecting');
+            
+            // Speak "Sastra" out loud if it hasn't already for this detection
+            if (!hasSpoken) {
+              const utterance = new SpeechSynthesisUtterance("Sastra");
+              utterance.pitch = 0.8; // Lower pitch for a dark, calm tone
+              utterance.rate = 0.9;  // Slightly slower
+              window.speechSynthesis.speak(utterance);
+              hasSpoken = true;
+            }
           } else {
             sastraText.classList.remove('visible');
             videoWrapper.classList.remove('detecting');
+            hasSpoken = false; // Reset so it can speak again next time you enter the frame
           }
         }
       } catch (error) {

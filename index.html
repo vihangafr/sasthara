@@ -97,7 +97,7 @@
         }
     </style>
 </head>
-<body class="h-screen w-screen flex flex-col items-center justify-center bg-[#030303] relative">
+<body class="h-[100dvh] w-screen flex flex-col items-center justify-center bg-[#030303] relative">
 
     <!-- Top Left Status Indicator -->
     <div class="absolute top-6 left-6 flex items-center gap-3 text-xs tracking-[0.2em] text-neutral-500 font-light z-10">
@@ -138,7 +138,7 @@
 
     <!-- Visible Video Element for Face Preview (Adjusted to 4:3 Aspect Ratio to prevent bounding box offset) -->
     <div class="absolute bottom-8 right-8 w-48 h-36 md:w-64 md:h-48 rounded-xl overflow-hidden opacity-0 transition-opacity duration-1000 z-30 shadow-[0_0_30px_rgba(255,255,255,0.05)] border border-neutral-800" id="video_container">
-        <video id="input_video" class="w-full h-full object-cover transform scale-x-[-1] filter grayscale contrast-125 brightness-90" autoplay muted playsinline></video>
+        <video id="input_video" class="w-full h-full object-cover transform scale-x-[-1] filter grayscale contrast-125 brightness-90" autoplay muted playsinline webkit-playsinline></video>
         <!-- Overlay container for drawing bounding boxes -->
         <div id="tracking_overlay" class="absolute inset-0 w-full h-full transform scale-x-[-1]"></div>
     </div>
@@ -162,6 +162,9 @@
             let isFaceCurrentlyVisible = false;
             let aiInitialized = false;
             let boundingBoxElement = null;
+            
+            let targetProgress = 0;
+            let currentProgress = 0;
 
             // Update UI State Helper
             const setStatus = (state) => {
@@ -193,37 +196,56 @@
                 }
             };
 
-            // Initialize MediaPipe Face Detection
+            // Smooth progress bar animator
+            const updateProgress = () => {
+                currentProgress += (targetProgress - currentProgress) * 0.05; // Ease towards target
+                
+                // Hard cap at 99% until the AI actually confirms it's working
+                if (currentProgress > 99 && !aiInitialized) currentProgress = 99; 
+                
+                progressBar.style.width = `${currentProgress}%`;
+                progressText.innerText = `${Math.floor(currentProgress)}%`;
+                
+                if (currentProgress < 99.9 || !aiInitialized) {
+                    requestAnimationFrame(updateProgress);
+                } else {
+                    progressBar.style.width = `100%`;
+                    progressText.innerText = `100%`;
+                }
+            };
+
             const faceDetection = new FaceDetection({locateFile: (file) => {
                 return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/${file}`;
             }});
 
             faceDetection.setOptions({
-                modelSelection: 0, // 0 for short-range (faces within 2 meters)
+                modelSelection: 0,
                 minDetectionConfidence: 0.6
             });
 
-            // Handle AI Results
             faceDetection.onResults((results) => {
                 if (!aiInitialized) {
+                    // AI is officially working! Push progress to 100%
                     aiInitialized = true;
-                    loadingSection.classList.add('hidden');
-                    // Make the video fully visible but styled
-                    videoContainer.classList.remove('opacity-0');
-                    videoContainer.classList.add('opacity-100');
-                    setStatus('ACTIVE');
+                    targetProgress = 100;
+                    
+                    // Small delay to let the user see the 100% text before switching UI
+                    setTimeout(() => {
+                        loadingSection.classList.add('hidden');
+                        videoContainer.classList.remove('opacity-0');
+                        videoContainer.classList.add('opacity-100');
+                        setStatus('ACTIVE');
+                    }, 500);
                 }
 
                 const hasFace = results.detections && results.detections.length > 0;
 
                 if (hasFace) {
-                    // Face found
                     if (faceTimeout) {
                         clearTimeout(faceTimeout); 
                         faceTimeout = null;
                     }
                     
-                    // Draw bounding box
                     const detection = results.detections[0];
                     const boundingBox = detection.boundingBox;
                     
@@ -235,7 +257,6 @@
                         trackingOverlay.appendChild(boundingBoxElement);
                     }
                     
-                    // Safely extract coordinates (Handling multiple versions of MediaPipe API formats)
                     const xMin = boundingBox.xMin !== undefined ? boundingBox.xMin : (boundingBox.xCenter - boundingBox.width / 2);
                     const yMin = boundingBox.yMin !== undefined ? boundingBox.yMin : (boundingBox.yCenter - boundingBox.height / 2);
 
@@ -247,37 +268,24 @@
 
                     if (!isFaceCurrentlyVisible) {
                         isFaceCurrentlyVisible = true;
-                        
-                        // Show "Sastra"
                         sastraText.classList.remove('hidden', 'fade-exit', 'fade-exit-active');
                         sastraText.classList.add('fade-enter');
-                        
-                        // Small delay to trigger CSS transition
                         requestAnimationFrame(() => {
                             sastraText.classList.add('fade-enter-active');
                         });
-                        
                         setStatus('DETECTED');
                     }
                 } else {
-                    // Hide bounding box if no face
-                    if (boundingBoxElement) {
-                        boundingBoxElement.style.opacity = '0';
-                    }
+                    if (boundingBoxElement) boundingBoxElement.style.opacity = '0';
 
-                    // No face found, use debounce to avoid flickering
                     if (isFaceCurrentlyVisible && !faceTimeout) {
                         faceTimeout = setTimeout(() => {
                             isFaceCurrentlyVisible = false;
-                            
-                            // Hide "Sastra"
                             sastraText.classList.remove('fade-enter', 'fade-enter-active');
                             sastraText.classList.add('fade-exit');
                             
                             requestAnimationFrame(() => {
                                 sastraText.classList.add('fade-exit-active');
-                                
-                                // Completely hide after animation completes
                                 setTimeout(() => {
                                     if (!isFaceCurrentlyVisible) sastraText.classList.add('hidden');
                                 }, 800);
@@ -285,73 +293,107 @@
 
                             setStatus('ACTIVE');
                             faceTimeout = null;
-                        }, 500); // 500ms delay before dropping the text
+                        }, 500);
                     }
                 }
             });
 
-            // Start Process
             startBtn.addEventListener('click', async () => {
                 startBtn.classList.add('hidden');
                 loadingSection.classList.remove('hidden');
                 setStatus('LOADING');
 
-                // Simulate loading progress for UI feedback while awaiting hardware
-                let progress = 0;
-                const progressInterval = setInterval(() => {
-                    progress += (80 - progress) * 0.1; // Smoothly ease towards 80%
-                    progressBar.style.width = `${progress}%`;
-                    progressText.innerText = `${Math.floor(progress)}%`;
-                }, 100);
+                // Start progress animation
+                targetProgress = 30; // Requesting permissions phase
+                requestAnimationFrame(updateProgress);
 
                 try {
-                    // 1. Initialize AI explicitly first (downloads WASM model)
-                    await faceDetection.initialize();
-                    
-                    // 2. Request Camera Hardware Native Stream
+                    // Force strict iOS attributes directly in JS
+                    videoElement.setAttribute('autoplay', '');
+                    videoElement.setAttribute('muted', '');
+                    videoElement.setAttribute('playsinline', '');
+
                     const stream = await navigator.mediaDevices.getUserMedia({ 
                         video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } 
                     });
                     videoElement.srcObject = stream;
                     
-                    // 3. Wait for video buffer to be ready to play
+                    targetProgress = 60; // Camera acquired, waiting for buffer
+
                     await new Promise((resolve) => {
                         videoElement.onloadedmetadata = () => {
-                            videoElement.play().then(resolve);
+                            videoElement.play().catch(e => console.error("Play error:", e));
                         };
+                        
+                        const checkVideoDimensions = () => {
+                            if (videoElement.readyState >= 2 && videoElement.videoWidth > 0) {
+                                videoElement.width = videoElement.videoWidth;
+                                videoElement.height = videoElement.videoHeight;
+                                resolve();
+                            } else {
+                                requestAnimationFrame(checkVideoDimensions);
+                            }
+                        };
+                        checkVideoDimensions();
                     });
 
-                    // Finish UI progress bar cleanly
-                    clearInterval(progressInterval);
-                    progressBar.style.width = `100%`;
-                    progressText.innerText = `100%`;
+                    targetProgress = 95; // Video playing, downloading AI models
                     setStatus('CALIBRATING');
 
-                    // 4. Start manual, ultra-reliable detection loop
+                    // Create an invisible canvas. Drawing video to canvas first prevents 
+                    // 99% of iOS WebGL crashes when passing data to the AI model.
+                    const offscreenCanvas = document.createElement('canvas');
+                    const ctx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+                    
                     let isDetecting = false;
-                    const detectionLoop = async () => {
+                    let consecutiveErrors = 0;
+
+                    const processFrame = async () => {
                         if (!videoElement.paused && !videoElement.ended && videoElement.readyState >= 2) {
                             if (!isDetecting) {
                                 isDetecting = true;
                                 try {
-                                    // Send frame to AI
-                                    await faceDetection.send({ image: videoElement });
+                                    // 1. Draw safe image to canvas
+                                    offscreenCanvas.width = videoElement.videoWidth;
+                                    offscreenCanvas.height = videoElement.videoHeight;
+                                    ctx.drawImage(videoElement, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
+                                    
+                                    // 2. Send perfectly clean canvas to AI
+                                    await faceDetection.send({ image: offscreenCanvas });
+                                    consecutiveErrors = 0; // Reset errors on success
                                 } catch (e) {
-                                    console.error("Detection error:", e);
+                                    console.error("AI Error:", e);
+                                    consecutiveErrors++;
+                                    
+                                    // If AI fails multiple times in a row, halt and show error
+                                    if (!aiInitialized && consecutiveErrors > 5) {
+                                        loadingSection.classList.add('hidden');
+                                        errorBox.classList.remove('hidden');
+                                        errorMessage.innerText = "AI INITIALIZATION FAILED";
+                                        setStatus('ERROR');
+                                        return; // Kill the loop entirely
+                                    }
                                 }
                                 isDetecting = false;
                             }
                         }
-                        // Queue next frame endlessly
-                        requestAnimationFrame(detectionLoop);
+                        
+                        // Continue loop using optimal frame timing API if available
+                        if (aiInitialized || consecutiveErrors <= 5) {
+                            if (videoElement.requestVideoFrameCallback) {
+                                videoElement.requestVideoFrameCallback(processFrame);
+                            } else {
+                                requestAnimationFrame(processFrame);
+                            }
+                        }
                     };
                     
                     // Ignite loop
-                    detectionLoop();
+                    processFrame();
 
                 } catch (error) {
-                    clearInterval(progressInterval);
                     console.error("Camera Error:", error);
+                    targetProgress = 0; // Reset progress
                     loadingSection.classList.add('hidden');
                     errorBox.classList.remove('hidden');
                     setStatus('ERROR');

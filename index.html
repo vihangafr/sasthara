@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sastra AI</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts for clean typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400&display=swap" rel="stylesheet">
+    
+    <!-- MediaPipe AI Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #030303;
+            color: #ffffff;
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Subtle glow for the main text */
+        .glow-text {
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.15);
+        }
+
+        /* Smooth fade transitions */
+        .fade-enter {
+            opacity: 0;
+            transform: scale(0.95) translateY(10px);
+            transition: all 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        .fade-enter-active {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+        }
+        .fade-exit {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            transition: all 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        .fade-exit-active {
+            opacity: 0;
+            transform: scale(1.05) translateY(-10px);
+        }
+
+        /* Blinking indicator */
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .animate-blink {
+            animation: blink 2s infinite ease-in-out;
+        }
+
+        /* Camera feed styling */
+        #video_feed {
+            filter: grayscale(100%) contrast(120%) brightness(80%);
+            mask-image: radial-gradient(circle, black 40%, transparent 100%);
+            -webkit-mask-image: radial-gradient(circle, black 40%, transparent 100%);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center bg-[#030303] relative">
+
+    <!-- Top Left Status Indicator -->
+    <div class="absolute top-6 left-6 flex items-center gap-3 text-xs tracking-[0.2em] text-neutral-500 font-light z-10">
+        <div id="status_dot" class="w-1.5 h-1.5 rounded-full bg-neutral-700"></div>
+        <span id="status_text">SYSTEM IDLE</span>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="relative w-full h-full flex items-center justify-center z-20">
+        
+        <!-- Start Button -->
+        <button id="start_btn" class="px-8 py-3 border border-neutral-800 text-neutral-400 text-sm tracking-[0.3em] uppercase rounded-full hover:bg-white hover:text-black transition-all duration-500">
+            Initiate Vision
+        </button>
+
+        <!-- Loading Text -->
+        <div id="loading_text" class="hidden absolute text-neutral-600 text-sm tracking-[0.4em] font-light animate-pulse">
+            AWAKENING NEURAL NET...
+        </div>
+
+        <!-- The Target Word -->
+        <h1 id="sastra_text" class="hidden absolute text-7xl md:text-9xl font-thin tracking-[0.3em] uppercase text-white glow-text fade-enter">
+            Sastra
+        </h1>
+
+        <!-- Error Message Box -->
+        <div id="error_box" class="hidden absolute flex flex-col items-center text-red-900 gap-4">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            <span id="error_message" class="text-xs tracking-[0.2em]">CAMERA ACCESS DENIED</span>
+        </div>
+    </div>
+
+    <!-- Hidden / Subdued Video Element -->
+    <div class="absolute bottom-6 right-6 w-32 h-32 md:w-48 md:h-48 rounded-full overflow-hidden opacity-0 transition-opacity duration-1000 z-10 pointer-events-none" id="video_container">
+        <video id="input_video" class="w-full h-full object-cover transform scale-x-[-1]" autoplay muted playsinline></video>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const startBtn = document.getElementById('start_btn');
+            const loadingText = document.getElementById('loading_text');
+            const sastraText = document.getElementById('sastra_text');
+            const videoElement = document.getElementById('input_video');
+            const videoContainer = document.getElementById('video_container');
+            const statusDot = document.getElementById('status_dot');
+            const statusText = document.getElementById('status_text');
+            const errorBox = document.getElementById('error_box');
+            const errorMessage = document.getElementById('error_message');
+
+            let faceTimeout = null;
+            let isFaceCurrentlyVisible = false;
+            let aiInitialized = false;
+
+            // Update UI State Helper
+            const setStatus = (state) => {
+                switch(state) {
+                    case 'IDLE':
+                        statusDot.className = 'w-1.5 h-1.5 rounded-full bg-neutral-700';
+                        statusText.innerText = 'SYSTEM IDLE';
+                        break;
+                    case 'LOADING':
+                        statusDot.className = 'w-1.5 h-1.5 rounded-full bg-yellow-600 animate-blink';
+                        statusText.innerText = 'CALIBRATING...';
+                        break;
+                    case 'ACTIVE':
+                        statusDot.className = 'w-1.5 h-1.5 rounded-full bg-neutral-500 animate-blink';
+                        statusText.innerText = 'VISION ACTIVE';
+                        break;
+                    case 'DETECTED':
+                        statusDot.className = 'w-1.5 h-1.5 rounded-full bg-white';
+                        statusText.innerText = 'SUBJECT LOCKED';
+                        break;
+                    case 'ERROR':
+                        statusDot.className = 'w-1.5 h-1.5 rounded-full bg-red-900';
+                        statusText.innerText = 'SYSTEM FAULT';
+                        break;
+                }
+            };
+
+            // Initialize MediaPipe Face Detection
+            const faceDetection = new FaceDetection({locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
+            }});
+
+            faceDetection.setOptions({
+                modelSelection: 0, // 0 for short-range (faces within 2 meters)
+                minDetectionConfidence: 0.6
+            });
+
+            // Handle AI Results
+            faceDetection.onResults((results) => {
+                if (!aiInitialized) {
+                    aiInitialized = true;
+                    loadingText.classList.add('hidden');
+                    videoContainer.classList.remove('opacity-0');
+                    videoContainer.classList.add('opacity-30');
+                    setStatus('ACTIVE');
+                }
+
+                const hasFace = results.detections && results.detections.length > 0;
+
+                if (hasFace) {
+                    // Face found
+                    clearTimeout(faceTimeout); // Prevent disappearing if face flickers
+                    
+                    if (!isFaceCurrentlyVisible) {
+                        isFaceCurrentlyVisible = true;
+                        
+                        // Show "Sastra"
+                        sastraText.classList.remove('hidden', 'fade-exit', 'fade-exit-active');
+                        sastraText.classList.add('fade-enter');
+                        
+                        // Small delay to trigger CSS transition
+                        requestAnimationFrame(() => {
+                            sastraText.classList.add('fade-enter-active');
+                        });
+                        
+                        setStatus('DETECTED');
+                    }
+                } else {
+                    // No face found, use debounce to avoid flickering
+                    if (isFaceCurrentlyVisible && !faceTimeout) {
+                        faceTimeout = setTimeout(() => {
+                            isFaceCurrentlyVisible = false;
+                            
+                            // Hide "Sastra"
+                            sastraText.classList.remove('fade-enter', 'fade-enter-active');
+                            sastraText.classList.add('fade-exit');
+                            
+                            requestAnimationFrame(() => {
+                                sastraText.classList.add('fade-exit-active');
+                                
+                                // Completely hide after animation completes
+                                setTimeout(() => {
+                                    if (!isFaceCurrentlyVisible) sastraText.classList.add('hidden');
+                                }, 800);
+                            });
+
+                            setStatus('ACTIVE');
+                            faceTimeout = null;
+                        }, 500); // 500ms delay before dropping the text
+                    }
+                }
+            });
+
+            // Start Process
+            startBtn.addEventListener('click', async () => {
+                startBtn.classList.add('hidden');
+                loadingText.classList.remove('hidden');
+                setStatus('LOADING');
+
+                try {
+                    // Initialize camera
+                    const camera = new Camera(videoElement, {
+                        onFrame: async () => {
+                            await faceDetection.send({image: videoElement});
+                        },
+                        width: 640,
+                        height: 480
+                    });
+
+                    await camera.start();
+                } catch (error) {
+                    console.error("Camera Error:", error);
+                    loadingText.classList.add('hidden');
+                    errorBox.classList.remove('hidden');
+                    setStatus('ERROR');
+                    
+                    if(error.name === 'NotAllowedError') {
+                        errorMessage.innerText = "CAMERA ACCESS DENIED";
+                    } else {
+                        errorMessage.innerText = "HARDWARE UNAVAILABLE";
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>

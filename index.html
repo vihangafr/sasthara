@@ -61,11 +61,40 @@
             animation: blink 2s infinite ease-in-out;
         }
 
+        /* Progress Bar Styling */
+        #progress_container {
+            width: 200px;
+            height: 2px;
+            background-color: #1a1a1a;
+            margin-top: 1rem;
+            border-radius: 2px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #progress_bar {
+            height: 100%;
+            width: 0%;
+            background-color: #555;
+            transition: width 0.3s ease-out;
+        }
+
         /* Camera feed styling */
         #video_feed {
             filter: grayscale(100%) contrast(120%) brightness(80%);
-            mask-image: radial-gradient(circle, black 40%, transparent 100%);
-            -webkit-mask-image: radial-gradient(circle, black 40%, transparent 100%);
+            /* Removed the heavy mask to make the face clearly visible */
+            border-radius: 50%;
+            border: 1px solid #333;
+        }
+        
+        /* Face tracking box overlay */
+        .tracking-box {
+            position: absolute;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.05);
+            pointer-events: none;
+            transition: all 0.1s ease-out;
+            z-index: 20;
         }
     </style>
 </head>
@@ -86,8 +115,14 @@
         </button>
 
         <!-- Loading Text -->
-        <div id="loading_text" class="hidden absolute text-neutral-600 text-sm tracking-[0.4em] font-light animate-pulse">
-            AWAKENING NEURAL NET...
+        <div id="loading_section" class="hidden absolute flex flex-col items-center">
+            <div id="loading_text" class="text-neutral-600 text-sm tracking-[0.4em] font-light animate-pulse">
+                AWAKENING NEURAL NET...
+            </div>
+            <div id="progress_container">
+                <div id="progress_bar"></div>
+            </div>
+            <div id="progress_text" class="text-neutral-700 text-[10px] tracking-widest mt-2">0%</div>
         </div>
 
         <!-- The Target Word -->
@@ -102,18 +137,23 @@
         </div>
     </div>
 
-    <!-- Hidden / Subdued Video Element -->
-    <div class="absolute bottom-6 right-6 w-32 h-32 md:w-48 md:h-48 rounded-full overflow-hidden opacity-0 transition-opacity duration-1000 z-10 pointer-events-none" id="video_container">
-        <video id="input_video" class="w-full h-full object-cover transform scale-x-[-1]" autoplay muted playsinline></video>
+    <!-- Visible Video Element for Face Preview -->
+    <div class="absolute bottom-8 right-8 w-40 h-40 md:w-56 md:h-56 rounded-full overflow-hidden opacity-0 transition-opacity duration-1000 z-30 shadow-[0_0_30px_rgba(255,255,255,0.05)] border border-neutral-800" id="video_container">
+        <video id="input_video" class="w-full h-full object-cover transform scale-x-[-1] filter grayscale contrast-125 brightness-90" autoplay muted playsinline></video>
+        <!-- Overlay container for drawing bounding boxes -->
+        <div id="tracking_overlay" class="absolute inset-0 w-full h-full transform scale-x-[-1]"></div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const startBtn = document.getElementById('start_btn');
-            const loadingText = document.getElementById('loading_text');
+            const loadingSection = document.getElementById('loading_section');
+            const progressBar = document.getElementById('progress_bar');
+            const progressText = document.getElementById('progress_text');
             const sastraText = document.getElementById('sastra_text');
             const videoElement = document.getElementById('input_video');
             const videoContainer = document.getElementById('video_container');
+            const trackingOverlay = document.getElementById('tracking_overlay');
             const statusDot = document.getElementById('status_dot');
             const statusText = document.getElementById('status_text');
             const errorBox = document.getElementById('error_box');
@@ -122,6 +162,7 @@
             let faceTimeout = null;
             let isFaceCurrentlyVisible = false;
             let aiInitialized = false;
+            let boundingBoxElement = null;
 
             // Update UI State Helper
             const setStatus = (state) => {
@@ -132,7 +173,11 @@
                         break;
                     case 'LOADING':
                         statusDot.className = 'w-1.5 h-1.5 rounded-full bg-yellow-600 animate-blink';
-                        statusText.innerText = 'CALIBRATING...';
+                        statusText.innerText = 'LOADING ASSETS...';
+                        break;
+                    case 'CALIBRATING':
+                        statusDot.className = 'w-1.5 h-1.5 rounded-full bg-yellow-600 animate-blink';
+                        statusText.innerText = 'CALIBRATING SENSOR...';
                         break;
                     case 'ACTIVE':
                         statusDot.className = 'w-1.5 h-1.5 rounded-full bg-neutral-500 animate-blink';
@@ -163,9 +208,10 @@
             faceDetection.onResults((results) => {
                 if (!aiInitialized) {
                     aiInitialized = true;
-                    loadingText.classList.add('hidden');
+                    loadingSection.classList.add('hidden');
+                    // Make the video fully visible but styled
                     videoContainer.classList.remove('opacity-0');
-                    videoContainer.classList.add('opacity-30');
+                    videoContainer.classList.add('opacity-100');
                     setStatus('ACTIVE');
                 }
 
@@ -173,8 +219,27 @@
 
                 if (hasFace) {
                     // Face found
-                    clearTimeout(faceTimeout); // Prevent disappearing if face flickers
+                    clearTimeout(faceTimeout); 
                     
+                    // Draw bounding box
+                    const detection = results.detections[0];
+                    const boundingBox = detection.boundingBox;
+                    
+                    if (!boundingBoxElement) {
+                        boundingBoxElement = document.createElement('div');
+                        boundingBoxElement.className = 'tracking-box';
+                        trackingOverlay.appendChild(boundingBoxElement);
+                    }
+                    
+                    // Convert normalized coordinates to percentages for CSS
+                    // Note: Video is flipped horizontally (scale-x-[-1]), so we don't need to invert X here 
+                    // because the overlay container is also flipped.
+                    boundingBoxElement.style.left = `${boundingBox.xCenter * 100 - (boundingBox.width * 100) / 2}%`;
+                    boundingBoxElement.style.top = `${boundingBox.yCenter * 100 - (boundingBox.height * 100) / 2}%`;
+                    boundingBoxElement.style.width = `${boundingBox.width * 100}%`;
+                    boundingBoxElement.style.height = `${boundingBox.height * 100}%`;
+                    boundingBoxElement.style.opacity = '1';
+
                     if (!isFaceCurrentlyVisible) {
                         isFaceCurrentlyVisible = true;
                         
@@ -190,6 +255,11 @@
                         setStatus('DETECTED');
                     }
                 } else {
+                    // Hide bounding box if no face
+                    if (boundingBoxElement) {
+                        boundingBoxElement.style.opacity = '0';
+                    }
+
                     // No face found, use debounce to avoid flickering
                     if (isFaceCurrentlyVisible && !faceTimeout) {
                         faceTimeout = setTimeout(() => {
@@ -218,13 +288,35 @@
             // Start Process
             startBtn.addEventListener('click', async () => {
                 startBtn.classList.add('hidden');
-                loadingText.classList.remove('hidden');
+                loadingSection.classList.remove('hidden');
                 setStatus('LOADING');
+
+                // Simulate loading progress for UI feedback
+                let progress = 0;
+                const progressInterval = setInterval(() => {
+                    // Fast progress initially, then slow down to wait for actual camera
+                    if (progress < 85) {
+                        progress += Math.random() * 15;
+                    } else if (progress < 95) {
+                        progress += Math.random() * 2;
+                    }
+                    
+                    if (progress > 99) progress = 99;
+                    
+                    progressBar.style.width = `${progress}%`;
+                    progressText.innerText = `${Math.floor(progress)}%`;
+                }, 100);
 
                 try {
                     // Initialize camera
                     const camera = new Camera(videoElement, {
                         onFrame: async () => {
+                            if (!aiInitialized && progressInterval) {
+                                clearInterval(progressInterval);
+                                progressBar.style.width = `100%`;
+                                progressText.innerText = `100%`;
+                                setStatus('CALIBRATING');
+                            }
                             await faceDetection.send({image: videoElement});
                         },
                         width: 640,
@@ -233,19 +325,6 @@
 
                     await camera.start();
                 } catch (error) {
+                    clearInterval(progressInterval);
                     console.error("Camera Error:", error);
-                    loadingText.classList.add('hidden');
-                    errorBox.classList.remove('hidden');
-                    setStatus('ERROR');
-                    
-                    if(error.name === 'NotAllowedError') {
-                        errorMessage.innerText = "CAMERA ACCESS DENIED";
-                    } else {
-                        errorMessage.innerText = "HARDWARE UNAVAILABLE";
-                    }
-                }
-            });
-        });
-    </script>
-</body>
-</html>
+                    loadingSection.classList.add('hidden');

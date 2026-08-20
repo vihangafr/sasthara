@@ -1,393 +1,242 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sastra AI</title>
-    
-    <!-- Tailwind CSS for styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Google Fonts for clean typography -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400&display=swap" rel="stylesheet">
-    
-    <!-- MediaPipe AI Libraries (PINNED to stable version to prevent WASM Abort errors) -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/face_detection.js" crossorigin="anonymous"></script>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  
+  body {
+    background: #0a0a0a;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: #ffffff;
+  }
+  
+  .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+    padding: 20px;
+  }
+  
+  .video-container {
+    position: relative;
+    width: 100%;
+    max-width: 500px;
+    aspect-ratio: 4 / 3;
+    background: #1a1a1a;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+  }
+  
+  #video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  
+  .overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  
+  .sastra-text {
+    font-size: 72px;
+    font-weight: 300;
+    letter-spacing: 2px;
+    color: #ffffff;
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+    text-transform: uppercase;
+  }
+  
+  .sastra-text.visible {
+    opacity: 1;
+  }
+  
+  .status {
+    margin-top: 24px;
+    text-align: center;
+  }
+  
+  .status-text {
+    font-size: 14px;
+    color: #888888;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+  }
+  
+  .status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background: #4a9eff;
+    border-radius: 50%;
+    margin-right: 8px;
+    animation: pulse 2s infinite;
+  }
+  
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 0.5;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  
+  .controls {
+    margin-top: 24px;
+    display: flex;
+    gap: 12px;
+  }
+  
+  button {
+    padding: 10px 20px;
+    background: transparent;
+    border: 1px solid #444444;
+    color: #888888;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s ease-in-out;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  
+  button:hover {
+    border-color: #666666;
+    color: #cccccc;
+  }
+  
+  button:active {
+    scale: 0.98;
+  }
+  
+  .info {
+    margin-top: 20px;
+    font-size: 12px;
+    color: #666666;
+    text-align: center;
+    max-width: 400px;
+  }
+</style>
 
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #030303;
-            color: #ffffff;
-            margin: 0;
-            overflow: hidden;
-            user-select: none;
-        }
-
-        /* Subtle glow for the main text */
-        .glow-text {
-            text-shadow: 0 0 30px rgba(255, 255, 255, 0.15);
-        }
-
-        /* Smooth fade transitions */
-        .fade-enter {
-            opacity: 0;
-            transform: scale(0.95) translateY(10px);
-            transition: all 0.8s cubic-bezier(0.25, 1, 0.5, 1);
-        }
-        .fade-enter-active {
-            opacity: 1;
-            transform: scale(1) translateY(0);
-        }
-        .fade-exit {
-            opacity: 1;
-            transform: scale(1) translateY(0);
-            transition: all 0.8s cubic-bezier(0.25, 1, 0.5, 1);
-        }
-        .fade-exit-active {
-            opacity: 0;
-            transform: scale(1.05) translateY(-10px);
-        }
-
-        /* Blinking indicator */
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
-        }
-        .animate-blink {
-            animation: blink 2s infinite ease-in-out;
-        }
-
-        /* Progress Bar Styling */
-        #progress_container {
-            width: 200px;
-            height: 2px;
-            background-color: #1a1a1a;
-            margin-top: 1rem;
-            border-radius: 2px;
-            overflow: hidden;
-            position: relative;
-        }
-
-        #progress_bar {
-            height: 100%;
-            width: 0%;
-            background-color: #555;
-            transition: width 0.3s ease-out;
-        }
-
-        /* Camera feed styling */
-        #video_feed {
-            filter: grayscale(100%) contrast(120%) brightness(80%);
-            /* Removed the heavy mask to make the face clearly visible */
-            border-radius: 50%;
-            border: 1px solid #333;
-        }
-        
-        /* Face tracking box overlay */
-        .tracking-box {
-            position: absolute;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            background: rgba(255, 255, 255, 0.05);
-            pointer-events: none;
-            transition: all 0.1s ease-out;
-            z-index: 20;
-        }
-    </style>
-</head>
-<body class="h-[100dvh] w-screen flex flex-col items-center justify-center bg-[#030303] relative">
-
-    <!-- Top Left Status Indicator -->
-    <div class="absolute top-6 left-6 flex items-center gap-3 text-xs tracking-[0.2em] text-neutral-500 font-light z-10">
-        <div id="status_dot" class="w-1.5 h-1.5 rounded-full bg-neutral-700"></div>
-        <span id="status_text">SYSTEM IDLE</span>
+<div class="container">
+  <div class="video-container">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas" style="display: none;"></canvas>
+    <div class="overlay">
+      <div class="sastra-text" id="sastraText">Sastra</div>
     </div>
+  </div>
+  
+  <div class="status">
+    <span class="status-dot"></span>
+    <span class="status-text" id="statusText">Initializing...</span>
+  </div>
+  
+  <div class="controls">
+    <button id="startBtn">Start</button>
+    <button id="stopBtn" disabled>Stop</button>
+  </div>
+  
+  <div class="info">
+    Grant camera access to enable face detection. The AI will display "Sastra" when faces are detected.
+  </div>
+</div>
 
-    <!-- Main Content Area -->
-    <div class="relative w-full h-full flex items-center justify-center z-20">
-        
-        <!-- Start Button -->
-        <button id="start_btn" class="px-8 py-3 border border-neutral-800 text-neutral-400 text-sm tracking-[0.3em] uppercase rounded-full hover:bg-white hover:text-black transition-all duration-500">
-            Initiate Vision
-        </button>
-
-        <!-- Loading Text -->
-        <div id="loading_section" class="hidden absolute flex flex-col items-center">
-            <div id="loading_text" class="text-neutral-600 text-sm tracking-[0.4em] font-light animate-pulse">
-                AWAKENING NEURAL NET...
-            </div>
-            <div id="progress_container">
-                <div id="progress_bar"></div>
-            </div>
-            <div id="progress_text" class="text-neutral-700 text-[10px] tracking-widest mt-2">0%</div>
-        </div>
-
-        <!-- The Target Word -->
-        <h1 id="sastra_text" class="hidden absolute text-7xl md:text-9xl font-thin tracking-[0.3em] uppercase text-white glow-text fade-enter">
-            Sastra
-        </h1>
-
-        <!-- Error Message Box (Modified to display longer error logs) -->
-        <div id="error_box" class="hidden absolute flex flex-col items-center text-red-900 gap-4 max-w-xs text-center">
-            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-            <span id="error_message" class="text-xs tracking-[0.2em] uppercase">CAMERA ACCESS DENIED</span>
-        </div>
-    </div>
-
-    <!-- Visible Video Element for Face Preview (Adjusted to 4:3 Aspect Ratio to prevent bounding box offset) -->
-    <div class="absolute bottom-8 right-8 w-48 h-36 md:w-64 md:h-48 rounded-xl overflow-hidden opacity-0 transition-opacity duration-1000 z-30 shadow-[0_0_30px_rgba(255,255,255,0.05)] border border-neutral-800" id="video_container">
-        <video id="input_video" class="w-full h-full object-cover transform scale-x-[-1] filter grayscale contrast-125 brightness-90" autoplay muted playsinline webkit-playsinline></video>
-        <!-- Overlay container for drawing bounding boxes -->
-        <div id="tracking_overlay" class="absolute inset-0 w-full h-full transform scale-x-[-1]"></div>
-    </div>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const startBtn = document.getElementById('start_btn');
-            const loadingSection = document.getElementById('loading_section');
-            const progressBar = document.getElementById('progress_bar');
-            const progressText = document.getElementById('progress_text');
-            const sastraText = document.getElementById('sastra_text');
-            const videoElement = document.getElementById('input_video');
-            const videoContainer = document.getElementById('video_container');
-            const trackingOverlay = document.getElementById('tracking_overlay');
-            const statusDot = document.getElementById('status_dot');
-            const statusText = document.getElementById('status_text');
-            const errorBox = document.getElementById('error_box');
-            const errorMessage = document.getElementById('error_message');
-
-            let faceTimeout = null;
-            let isFaceCurrentlyVisible = false;
-            let aiInitialized = false;
-            let boundingBoxElement = null;
-            
-            const offscreenCanvas = document.createElement('canvas');
-            const offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
-            
-            let targetProgress = 0;
-            let currentProgress = 0;
-
-            // Update UI State Helper
-            const setStatus = (state) => {
-                switch(state) {
-                    case 'IDLE':
-                        statusDot.className = 'w-1.5 h-1.5 rounded-full bg-neutral-700';
-                        statusText.innerText = 'SYSTEM IDLE';
-                        break;
-                    case 'LOADING':
-                        statusDot.className = 'w-1.5 h-1.5 rounded-full bg-yellow-600 animate-blink';
-                        statusText.innerText = 'LOADING ASSETS...';
-                        break;
-                    case 'CALIBRATING':
-                        statusDot.className = 'w-1.5 h-1.5 rounded-full bg-yellow-600 animate-blink';
-                        statusText.innerText = 'CALIBRATING SENSOR...';
-                        break;
-                    case 'ACTIVE':
-                        statusDot.className = 'w-1.5 h-1.5 rounded-full bg-neutral-500 animate-blink';
-                        statusText.innerText = 'VISION ACTIVE';
-                        break;
-                    case 'DETECTED':
-                        statusDot.className = 'w-1.5 h-1.5 rounded-full bg-white';
-                        statusText.innerText = 'SUBJECT LOCKED';
-                        break;
-                    case 'ERROR':
-                        statusDot.className = 'w-1.5 h-1.5 rounded-full bg-red-900';
-                        statusText.innerText = 'SYSTEM FAULT';
-                        break;
-                }
-            };
-
-            // Ensure locateFile points to the EXACT pinned version to prevent WASM Abort
-            const faceDetection = new FaceDetection({locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/${file}`;
-            }});
-
-            faceDetection.setOptions({
-                modelSelection: 0,
-                minDetectionConfidence: 0.6
-            });
-
-            faceDetection.onResults((results) => {
-                if (!aiInitialized) {
-                    aiInitialized = true;
-                    targetProgress = 100;
-                    
-                    setTimeout(() => {
-                        loadingSection.classList.add('hidden');
-                        videoContainer.classList.remove('opacity-0');
-                        videoContainer.classList.add('opacity-100');
-                        setStatus('ACTIVE');
-                    }, 500);
-                }
-
-                const hasFace = results.detections && results.detections.length > 0;
-
-                if (hasFace) {
-                    if (faceTimeout) {
-                        clearTimeout(faceTimeout); 
-                        faceTimeout = null;
-                    }
-                    
-                    const detection = results.detections[0];
-                    const boundingBox = detection.boundingBox;
-                    
-                    if (!boundingBoxElement) {
-                        boundingBoxElement = document.createElement('div');
-                        boundingBoxElement.className = 'tracking-box';
-                        boundingBoxElement.style.borderRadius = '4px';
-                        boundingBoxElement.style.transition = 'all 0.1s linear';
-                        trackingOverlay.appendChild(boundingBoxElement);
-                    }
-                    
-                    const xMin = boundingBox.xMin !== undefined ? boundingBox.xMin : (boundingBox.xCenter - boundingBox.width / 2);
-                    const yMin = boundingBox.yMin !== undefined ? boundingBox.yMin : (boundingBox.yCenter - boundingBox.height / 2);
-
-                    boundingBoxElement.style.left = `${xMin * 100}%`;
-                    boundingBoxElement.style.top = `${yMin * 100}%`;
-                    boundingBoxElement.style.width = `${boundingBox.width * 100}%`;
-                    boundingBoxElement.style.height = `${boundingBox.height * 100}%`;
-                    boundingBoxElement.style.opacity = '1';
-
-                    if (!isFaceCurrentlyVisible) {
-                        isFaceCurrentlyVisible = true;
-                        sastraText.classList.remove('hidden', 'fade-exit', 'fade-exit-active');
-                        sastraText.classList.add('fade-enter');
-                        requestAnimationFrame(() => {
-                            sastraText.classList.add('fade-enter-active');
-                        });
-                        setStatus('DETECTED');
-                    }
-                } else {
-                    if (boundingBoxElement) boundingBoxElement.style.opacity = '0';
-
-                    if (isFaceCurrentlyVisible && !faceTimeout) {
-                        faceTimeout = setTimeout(() => {
-                            isFaceCurrentlyVisible = false;
-                            sastraText.classList.remove('fade-enter', 'fade-enter-active');
-                            sastraText.classList.add('fade-exit');
-                            
-                            requestAnimationFrame(() => {
-                                sastraText.classList.add('fade-exit-active');
-                                setTimeout(() => {
-                                    if (!isFaceCurrentlyVisible) sastraText.classList.add('hidden');
-                                }, 800);
-                            });
-
-                            setStatus('ACTIVE');
-                            faceTimeout = null;
-                        }, 500);
-                    }
-                }
-            });
-
-            startBtn.addEventListener('click', async () => {
-                startBtn.classList.add('hidden');
-                loadingSection.classList.remove('hidden');
-                setStatus('LOADING');
-
-                targetProgress = 20; 
-                requestAnimationFrame(updateProgress);
-
-                try {
-                    videoElement.setAttribute('autoplay', '');
-                    videoElement.setAttribute('muted', '');
-                    videoElement.setAttribute('playsinline', '');
-
-                    const stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } 
-                    });
-                    videoElement.srcObject = stream;
-                    
-                    targetProgress = 50; 
-
-                    await new Promise((resolve) => {
-                        videoElement.onloadedmetadata = () => {
-                            videoElement.play().catch(e => console.error("Play error:", e));
-                        };
-                        
-                        const checkVideoDimensions = () => {
-                            if (videoElement.readyState >= 2 && videoElement.videoWidth > 0) {
-                                videoElement.width = videoElement.videoWidth;
-                                videoElement.height = videoElement.videoHeight;
-                                resolve();
-                            } else {
-                                requestAnimationFrame(checkVideoDimensions);
-                            }
-                        };
-                        checkVideoDimensions();
-                    });
-
-                    targetProgress = 80; 
-
-                    // CRITICAL FIX: Explicitly wait for AI WASM/Models to finish downloading
-                    // before attempting to feed it any camera frames.
-                    await faceDetection.initialize();
-
-                    targetProgress = 95; 
-                    setStatus('CALIBRATING');
-                    
-                    let isDetecting = false;
-                    let consecutiveErrors = 0;
-
-                    const processFrame = async () => {
-                        if (!videoElement.paused && !videoElement.ended && videoElement.readyState >= 2 && videoElement.videoWidth > 0) {
-                            if (!isDetecting) {
-                                isDetecting = true;
-                                try {
-                                    // CRITICAL iOS FIX: Draw video to canvas first.
-                                    // Safari WebGL crashes with ABORT() if given raw video elements directly.
-                                    offscreenCanvas.width = videoElement.videoWidth;
-                                    offscreenCanvas.height = videoElement.videoHeight;
-                                    offscreenCtx.drawImage(videoElement, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
-
-                                    // Send the stable canvas context to the AI, avoiding Safari hardware bugs
-                                    await faceDetection.send({ image: offscreenCanvas });
-                                    consecutiveErrors = 0; 
-                                } catch (e) {
-                                    console.error("AI Error:", e);
-                                    consecutiveErrors++;
-                                    
-                                    if (!aiInitialized && consecutiveErrors > 5) {
-                                        loadingSection.classList.add('hidden');
-                                        errorBox.classList.remove('hidden');
-                                        // Display exact error string to help with debugging
-                                        errorMessage.innerText = "ERROR: " + (e.message || "UNKNOWN FAILURE");
-                                        setStatus('ERROR');
-                                        return; 
-                                    }
-                                }
-                                isDetecting = false;
-                            }
-                        }
-                        
-                        if (aiInitialized || consecutiveErrors <= 5) {
-                            if (videoElement.requestVideoFrameCallback) {
-                                videoElement.requestVideoFrameCallback(processFrame);
-                            } else {
-                                requestAnimationFrame(processFrame);
-                            }
-                        }
-                    };
-                    
-                    processFrame();
-
-                } catch (error) {
-                    console.error("Camera/Init Error:", error);
-                    targetProgress = 0; 
-                    loadingSection.classList.add('hidden');
-                    errorBox.classList.remove('hidden');
-                    setStatus('ERROR');
-                    
-                    if (error.name === 'NotAllowedError') {
-                        errorMessage.innerText = "CAMERA ACCESS DENIED";
-                    } else {
-                        errorMessage.innerText = error.message || "HARDWARE UNAVAILABLE";
-                    }
-                }
-            });
-        });
-    </script>
-</body>
-</html>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/face-api.min.js"></script>
+<script>
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const sastraText = document.getElementById('sastraText');
+  const statusText = document.getElementById('statusText');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  
+  let isRunning = false;
+  let stream = null;
+  
+  async function initializeFaceApi() {
+    try {
+      const MODEL_URL = 'https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/weights/';
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      ]);
+      statusText.textContent = 'Ready to detect faces';
+      startBtn.disabled = false;
+    } catch (error) {
+      statusText.textContent = 'Failed to load face detection models';
+      console.error('Error loading models:', error);
+    }
+  }
+  
+  async function startCamera() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false 
+      });
+      video.srcObject = stream;
+      isRunning = true;
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      statusText.textContent = 'Camera active';
+      detectFaces();
+    } catch (error) {
+      statusText.textContent = 'Camera access denied';
+      console.error('Camera error:', error);
+    }
+  }
+  
+  async function detectFaces() {
+    if (!isRunning) return;
+    
+    try {
+      const detections = await faceapi.detectAllFaces(
+        video,
+        new faceapi.TinyFaceDetectorOptions()
+      );
+      
+      if (detections.length > 0) {
+        sastraText.classList.add('visible');
+      } else {
+        sastraText.classList.remove('visible');
+      }
+    } catch (error) {
+      console.error('Detection error:', error);
+    }
+    
+    requestAnimationFrame(detectFaces);
+  }
+  
+  function stopCamera() {
+    isRunning = false;
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    video.srcObject = null;
+    sastraText.classList.remove('visible');
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    statusText.textContent = 'Camera stopped';
+  }
+  
+  startBtn.addEventListener('click', startCamera);
+  stopBtn.addEventListener('click', stopCamera);
+  
+  initializeFaceApi();
+</script>

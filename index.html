@@ -13,9 +13,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400&display=swap" rel="stylesheet">
     
-    <!-- MediaPipe AI Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
+    <!-- MediaPipe AI Libraries (Version Pinned for 100% Reliability) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/face_detection.js" crossorigin="anonymous"></script>
 
     <style>
         body {
@@ -137,8 +136,8 @@
         </div>
     </div>
 
-    <!-- Visible Video Element for Face Preview -->
-    <div class="absolute bottom-8 right-8 w-40 h-40 md:w-56 md:h-56 rounded-full overflow-hidden opacity-0 transition-opacity duration-1000 z-30 shadow-[0_0_30px_rgba(255,255,255,0.05)] border border-neutral-800" id="video_container">
+    <!-- Visible Video Element for Face Preview (Adjusted to 4:3 Aspect Ratio to prevent bounding box offset) -->
+    <div class="absolute bottom-8 right-8 w-48 h-36 md:w-64 md:h-48 rounded-xl overflow-hidden opacity-0 transition-opacity duration-1000 z-30 shadow-[0_0_30px_rgba(255,255,255,0.05)] border border-neutral-800" id="video_container">
         <video id="input_video" class="w-full h-full object-cover transform scale-x-[-1] filter grayscale contrast-125 brightness-90" autoplay muted playsinline></video>
         <!-- Overlay container for drawing bounding boxes -->
         <div id="tracking_overlay" class="absolute inset-0 w-full h-full transform scale-x-[-1]"></div>
@@ -196,7 +195,7 @@
 
             // Initialize MediaPipe Face Detection
             const faceDetection = new FaceDetection({locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/${file}`;
             }});
 
             faceDetection.setOptions({
@@ -219,7 +218,10 @@
 
                 if (hasFace) {
                     // Face found
-                    clearTimeout(faceTimeout); 
+                    if (faceTimeout) {
+                        clearTimeout(faceTimeout); 
+                        faceTimeout = null;
+                    }
                     
                     // Draw bounding box
                     const detection = results.detections[0];
@@ -228,14 +230,17 @@
                     if (!boundingBoxElement) {
                         boundingBoxElement = document.createElement('div');
                         boundingBoxElement.className = 'tracking-box';
+                        boundingBoxElement.style.borderRadius = '4px';
+                        boundingBoxElement.style.transition = 'all 0.1s linear';
                         trackingOverlay.appendChild(boundingBoxElement);
                     }
                     
-                    // Convert normalized coordinates to percentages for CSS
-                    // Note: Video is flipped horizontally (scale-x-[-1]), so we don't need to invert X here 
-                    // because the overlay container is also flipped.
-                    boundingBoxElement.style.left = `${boundingBox.xCenter * 100 - (boundingBox.width * 100) / 2}%`;
-                    boundingBoxElement.style.top = `${boundingBox.yCenter * 100 - (boundingBox.height * 100) / 2}%`;
+                    // Safely extract coordinates (Handling multiple versions of MediaPipe API formats)
+                    const xMin = boundingBox.xMin !== undefined ? boundingBox.xMin : (boundingBox.xCenter - boundingBox.width / 2);
+                    const yMin = boundingBox.yMin !== undefined ? boundingBox.yMin : (boundingBox.yCenter - boundingBox.height / 2);
+
+                    boundingBoxElement.style.left = `${xMin * 100}%`;
+                    boundingBoxElement.style.top = `${yMin * 100}%`;
                     boundingBoxElement.style.width = `${boundingBox.width * 100}%`;
                     boundingBoxElement.style.height = `${boundingBox.height * 100}%`;
                     boundingBoxElement.style.opacity = '1';
@@ -291,40 +296,74 @@
                 loadingSection.classList.remove('hidden');
                 setStatus('LOADING');
 
-                // Simulate loading progress for UI feedback
+                // Simulate loading progress for UI feedback while awaiting hardware
                 let progress = 0;
                 const progressInterval = setInterval(() => {
-                    // Fast progress initially, then slow down to wait for actual camera
-                    if (progress < 85) {
-                        progress += Math.random() * 15;
-                    } else if (progress < 95) {
-                        progress += Math.random() * 2;
-                    }
-                    
-                    if (progress > 99) progress = 99;
-                    
+                    progress += (80 - progress) * 0.1; // Smoothly ease towards 80%
                     progressBar.style.width = `${progress}%`;
                     progressText.innerText = `${Math.floor(progress)}%`;
                 }, 100);
 
                 try {
-                    // Initialize camera
-                    const camera = new Camera(videoElement, {
-                        onFrame: async () => {
-                            if (!aiInitialized && progressInterval) {
-                                clearInterval(progressInterval);
-                                progressBar.style.width = `100%`;
-                                progressText.innerText = `100%`;
-                                setStatus('CALIBRATING');
-                            }
-                            await faceDetection.send({image: videoElement});
-                        },
-                        width: 640,
-                        height: 480
+                    // 1. Initialize AI explicitly first (downloads WASM model)
+                    await faceDetection.initialize();
+                    
+                    // 2. Request Camera Hardware Native Stream
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } 
+                    });
+                    videoElement.srcObject = stream;
+                    
+                    // 3. Wait for video buffer to be ready to play
+                    await new Promise((resolve) => {
+                        videoElement.onloadedmetadata = () => {
+                            videoElement.play().then(resolve);
+                        };
                     });
 
-                    await camera.start();
+                    // Finish UI progress bar cleanly
+                    clearInterval(progressInterval);
+                    progressBar.style.width = `100%`;
+                    progressText.innerText = `100%`;
+                    setStatus('CALIBRATING');
+
+                    // 4. Start manual, ultra-reliable detection loop
+                    let isDetecting = false;
+                    const detectionLoop = async () => {
+                        if (!videoElement.paused && !videoElement.ended && videoElement.readyState >= 2) {
+                            if (!isDetecting) {
+                                isDetecting = true;
+                                try {
+                                    // Send frame to AI
+                                    await faceDetection.send({ image: videoElement });
+                                } catch (e) {
+                                    console.error("Detection error:", e);
+                                }
+                                isDetecting = false;
+                            }
+                        }
+                        // Queue next frame endlessly
+                        requestAnimationFrame(detectionLoop);
+                    };
+                    
+                    // Ignite loop
+                    detectionLoop();
+
                 } catch (error) {
                     clearInterval(progressInterval);
                     console.error("Camera Error:", error);
                     loadingSection.classList.add('hidden');
+                    errorBox.classList.remove('hidden');
+                    setStatus('ERROR');
+                    
+                    if (error.name === 'NotAllowedError') {
+                        errorMessage.innerText = "CAMERA ACCESS DENIED";
+                    } else {
+                        errorMessage.innerText = "HARDWARE UNAVAILABLE";
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>

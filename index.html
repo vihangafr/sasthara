@@ -272,14 +272,22 @@
     
     // Function to call a FREE AI API (Pollinations) that requires NO API KEY
     async function generateSastraFromAI() {
-      // Create a single, strong prompt and encode it into the URL directly
-      const prompt = "You are a mystical Sri Lankan astrologer. Write exactly 2 short sentences in Sinhala giving a face reading (sastra). Mention a facial feature, a personality trait, and a short prediction for their future. ONLY output Sinhala text. No English.";
+      // Add a random seed so the AI doesn't cache the response and gives a unique reading every time
+      const prompt = "You are a mystical Sri Lankan astrologer giving a face reading (sastra). Write exactly 2 short sentences in Sinhala. Mention a facial feature, a personality trait, and a short prediction. ONLY output Sinhala text. Make it unique. Random seed: " + Math.random();
       
-      // Pollinations works best as a simple GET request with the prompt in the URL
-      const apiUrl = "https://text.pollinations.ai/" + encodeURIComponent(prompt);
-
       try {
-        const response = await fetch(apiUrl);
+        const response = await fetch('https://text.pollinations.ai/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messages: [
+              { role: 'user', content: prompt }
+            ],
+            model: 'mistral' // Explicitly request a smart model that understands Sinhala
+          }),
+        });
         
         if (!response.ok) {
           throw new Error("Network response was not ok");
@@ -294,8 +302,15 @@
         }
       } catch (error) {
         console.error("Free AI Sastra generation failed:", error);
-        // Fallback reading just in case of network issues
-        return "ඔබේ දෑස්වලින් පෙනෙන්නේ ඔබ බොහෝ බාධක ජයගත් කෙනෙක් බවයි. ඉදිරි කාලයේදී ඔබට නොසිතූ දියුණුවක් හිමිවනු ඇත.";
+        // Fallback readings just in case of network issues or if the API is blocked by the browser
+        const fallbacks = [
+            "ඔබේ දෑස්වලින් පෙනෙන්නේ ඔබ බොහෝ බාධක ජයගත් කෙනෙක් බවයි. ඉදිරි කාලයේදී ඔබට නොසිතූ දියුණුවක් හිමිවනු ඇත.",
+            "ඔබේ නළල පෙන්නුම් කරන්නේ ඔබ ඉතා බුද්ධිමත් කෙනෙකු බවයි. ලඟදීම ඔබට විශාල ධනයක් ලැබීමට නියමිතයි.",
+            "ඔබේ මුහුණේ හැඩය අනුව ඔබ අන් අයට ඉතා කරුණාවන්තයි. ඉක්මනින්ම ඔබට හොඳ ආරංචියක් අසන්නට ලැබේවි.",
+            "ඔබේ සිනහව පිටුපස ඔබ සඟවන වේදනාවක් ඇත. නමුත් ඉදිරි මාසයේදී ඔබේ පැරණි සිහිනයක් සැබෑ වනු ඇත.",
+            "ඔබේ මුහුණේ ලක්ෂණ අනුව ඔබ කිසිදා උත්සාහය අත්නොහරින කෙනෙක්. ඒ වෙනුවෙන් ඔබට නුදුරේදීම විශාල ජයග්‍රහණයක් හිමිවේ."
+        ];
+        return fallbacks[Math.floor(Math.random() * fallbacks.length)];
       }
     }
 

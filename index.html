@@ -241,21 +241,22 @@
     let stream = null;
     let detectionLoop = null;
 
-    // We use the tiny face detector for performance in the browser
-    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+    // Increased input size for better accuracy and significantly lowered 
+    // the threshold so it triggers the text much more easily.
+    const options = new faceapi.TinyFaceDetectorOptions({ 
+      inputSize: 416, 
+      scoreThreshold: 0.2 
+    });
     
     async function initializeFaceApi() {
       try {
         statusDot.className = 'status-dot loading';
         
-        // Using Vlad Mandic's reliable CDN for models
         const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
         
-        // Initialize TensorFlow backend before loading models to prevent WASM/backend errors
         await faceapi.tf.setBackend('webgl');
         await faceapi.tf.ready();
         
-        // Load just the tiny face detector for maximum performance and minimal footprint
         await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
         
         updateStatus('Ready', 'status-dot');
@@ -281,13 +282,19 @@
         
         video.srcObject = stream;
         
-        // Wait for video to actually start playing before detecting
-        video.onplay = () => {
-          isRunning = true;
-          startBtn.disabled = true;
-          stopBtn.disabled = false;
-          updateStatus('Detecting', 'status-dot active');
-          detectFaces();
+        // Wait for metadata to ensure the video has dimensions, then force play
+        video.onloadedmetadata = async () => {
+          try {
+            await video.play();
+            isRunning = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            updateStatus('Detecting', 'status-dot active');
+            detectFaces();
+          } catch (playError) {
+            console.error('Video playback failed:', playError);
+            updateStatus('Playback error', 'status-dot');
+          }
         };
 
       } catch (error) {
@@ -300,22 +307,22 @@
       if (!isRunning || video.paused || video.ended) return;
       
       try {
-        // Detect faces
-        const detections = await faceapi.detectAllFaces(video, options);
-        
-        // Update UI based on detections
-        if (detections && detections.length > 0) {
-          sastraText.classList.add('visible');
-          videoWrapper.classList.add('detecting');
-        } else {
-          sastraText.classList.remove('visible');
-          videoWrapper.classList.remove('detecting');
+        // Ensure the video has actual dimensions before passing to TensorFlow
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          const detections = await faceapi.detectAllFaces(video, options);
+          
+          if (detections && detections.length > 0) {
+            sastraText.classList.add('visible');
+            videoWrapper.classList.add('detecting');
+          } else {
+            sastraText.classList.remove('visible');
+            videoWrapper.classList.remove('detecting');
+          }
         }
       } catch (error) {
         console.warn('Detection skipped this frame:', error);
       }
       
-      // Schedule next frame
       if (isRunning) {
         detectionLoop = requestAnimationFrame(detectFaces);
       }
@@ -341,17 +348,14 @@
       updateStatus('Camera stopped', 'status-dot');
     }
 
-    // Helper for updating status UI
     function updateStatus(text, dotClass) {
       statusText.textContent = text;
       statusDot.className = dotClass;
     }
     
-    // Bind Event Listeners
     startBtn.addEventListener('click', startCamera);
     stopBtn.addEventListener('click', stopCamera);
     
-    // Start initialization on load
     window.addEventListener('DOMContentLoaded', initializeFaceApi);
 
   </script>

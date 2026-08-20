@@ -268,52 +268,45 @@
     let stream = null;
     let detectionLoop = null;
     let isReading = false; 
+    let isFetching = false; // Added to prevent multiple API calls at once
     
-    // Procedural Sinhala Sastra Generator (Creates 1000 unique realistic combinations)
-    const sastraParts = {
-      intro: [
-        "ඔබේ දේහ ලක්ෂණ හා නළලේ හැඩය අනුව පෙනී යන්නේ,",
-        "ඔබේ දෑස්වල ඇති ගැඹුරු බැල්මෙන් මට හැඟෙන්නේ,",
-        "සාමුද්‍රික ශාස්ත්‍රයට අනුව ඔබේ මුහුණේ ලක්ෂණ පෙන්වා දෙන්නේ,",
-        "ඔබේ නාසය සහ ඇහිබැම පිහිටා ඇති ආකාරය විශ්ලේෂණය කිරීමේදී කියවෙන්නේ,",
-        "ඔබේ මුහුණේ සලකුණු හා සමස්ත හැඩය දෙස බැලීමේදී හෙළිවන්නේ,",
-        "ඔබේ මුහුණේ දකුණු පස ඇති සියුම් ඉරියව් පවසන රහස නම්,",
-        "කටහඬේ නොකියවෙන සහ මුහුණේ සටහන්ව ඇති ඉරණම අනුව,",
-        "දෑස්වල ඇති දීප්තිය සහ වෙහෙසකර බව එකට මුසුවී පවසන්නේ,",
-        "මුහුණේ මාංශපේශී පිහිටීම සහ උපන් ලප වලින් කියවෙන්නේ,",
-        "ඔබේ ඉරණම් රේඛාව සහ මුහුණේ තේජස පෙන්වා දෙන්නේ,"
-      ],
-      middle: [
-        "ඔබ ජීවිතයේ බොහෝ දුක් කම්කටොලු සහ බාධක තනිවම ජයගත් කෙනෙක්.",
-        "පිටතින් සිනාසී සිටියත් ඔබගේ හිත ඇතුළේ ලොකු වේදනාවක් සඟවාගෙන සිටිනවා.",
-        "අනුන්ට කොතරම් උදව් කළත් ඔබට කවදාවත් ඒ තරම් හොඳක් අසන්නට ලැබෙන්නේ නැහැ.",
-        "ඔබ ඉක්මනින් කේන්ති ගන්නා නමුත්, ඊටත් වඩා ඉක්මනින් නිවී යන අයෙක්.",
-        "ඔබට සාමාන්‍ය අයට වඩා යමක් කල්තියා දැකීමේ හැකියාවක් සහජයෙන්ම පිහිටා තිබෙනවා.",
-        "පවුලේ අය වෙනුවෙන් බොහෝ කැපකිරීම් කර ඇති නමුත් ඒවාට නිසි අගයක් මෙතෙක් ලැබී නැහැ.",
-        "ඔබේ සිතුවිලි ගැඹුරුයි, ඔබ නිතරම අනාගතය ගැන විශාල බරක් ඔළුවේ තබාගෙනයි ජීවත් වෙන්නේ.",
-        "ජීවිතයේ එක්තරා කාලයකදී ඔබට ඉතා සමීප කෙනෙකුගෙන් දැඩි රැවටීමක් සිදුවී තිබෙනවා.",
-        "ඔබ නිදහසට ප්‍රිය කරන, කාටවත් යටත් වීමට අකමැති ස්වාධීන ගතිගුණ ඇති අයෙක්.",
-        "හිතේ තියෙන දේ කෙලින්ම කියන නිසා බොහෝ විට ඔබට හිතවතුන් පවා අහිමි වී තිබෙනවා."
-      ],
-      end: [
-        "නමුත් සතුටු වන්න, ඉදිරි කාලය තුළ ඔබේ ආර්ථික තත්ත්වයේ ඉතා යහපත් වෙනසක් සිදුවනු ඇත.",
-        "පරිස්සම් වන්න, ළඟම හිතවතෙකුගෙන් ඔබට නැවතත් බාධාවක් වීමට ඉඩකඩ තිබෙන බැවින් රහස් රැකගන්න.",
-        "මෙතෙක් පැවති අපල කාලය ගෙවී යනවා. ඔබ බලාපොරොත්තු වූ ජයග්‍රහණය ඉතා ළඟයි.",
-        "රැකියා ස්ථානයේ හෝ ව්‍යාපාරයේ ඔබ නොසිතූ අන්දමේ ප්‍රබල දියුණුවක් ඔබට හිමිවනු ඇත.",
-        "සතුරු කරදර මැඩගෙන, සමාජයේ ඉහළ පිළිගැනීමක් ලැබෙන කාලයක් ඉක්මනින්ම උදාවෙනවා.",
-        "සෞඛ්‍යය ගැන සැලකිලිමත් වන්න. විශේෂයෙන් හිස හෝ බඩවැල් ආශ්‍රිත සුළු රෝග මතු විය හැකියි.",
-        "විදෙස් ගමනකට හෝ දුර ගමනකට ඉතා ආසන්න කාලයකදී ඔබට අවස්ථාව උදාවෙන බව පෙනෙනවා.",
-        "ඔබේ ජීවිතයට බලපෑම් කළ හැකි, ඔබට නිවැරදි මඟ පෙන්වන අලුත් පුද්ගලයෙකු මුණගැසීමට නියමිතයි.",
-        "බලාපොරොත්තු සුන් කරගන්න එපා. ඔබ වැටුණු තැනින් ඉතා ශක්තිමත්ව නැගී සිටින බව මේ ලක්ෂණ කියා පානවා.",
-        "ඉදිරි සති කිහිපය තුළ අසන්නට ලැබෙන සුභ ආරංචියක් ඔබේ ජීවිතයේ හැරවුම් ලක්ෂ්‍යයක් වේවි."
-      ]
-    };
+    // Function to call a FREE AI API (Pollinations) that requires NO API KEY
+    async function generateSastraFromAI() {
+      const systemPrompt = "You are a deeply traditional and mystical Sri Lankan astrologer and face reader. Read the person's face.";
+      const userPrompt = "Write a short, realistic 'Sastra' (face reading/fortune) in Sinhala. It should be exactly 2-3 sentences long. First, mention a facial feature (like eyes, forehead, or smile). Second, mention a hidden personality trait. Finally, give a hopeful but mysterious prediction for their near future. DO NOT use English words. ONLY output the Sinhala text.";
 
-    function generateReading() {
-      const p1 = sastraParts.intro[Math.floor(Math.random() * sastraParts.intro.length)];
-      const p2 = sastraParts.middle[Math.floor(Math.random() * sastraParts.middle.length)];
-      const p3 = sastraParts.end[Math.floor(Math.random() * sastraParts.end.length)];
-      return `${p1} ${p2} ${p3}`;
+      // Pollinations.ai is a free public API that doesn't require any API keys
+      const apiUrl = "https://text.pollinations.ai/";
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt }
+            ]
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error("Network response was not ok");
+        }
+        
+        // Pollinations is beautifully simple and returns the raw AI text directly
+        const aiText = await response.text();
+        
+        if (aiText && aiText.trim().length > 0) {
+          return aiText.trim();
+        } else {
+          throw new Error("Empty response from AI");
+        }
+      } catch (error) {
+        console.error("Free AI Sastra generation failed:", error);
+        // Fallback reading just in case of network issues
+        return "ඔබේ දෑස්වලින් පෙනෙන්නේ ඔබ බොහෝ බාධක ජයගත් කෙනෙක් බවයි. ඉදිරි කාලයේදී ඔබට නොසිතූ දියුණුවක් හිමිවනු ඇත.";
+      }
     }
 
     const options = new faceapi.TinyFaceDetectorOptions({ 
@@ -402,36 +395,42 @@
             
             videoWrapper.classList.add('detecting');
             
-            // Speak a Sastra (reading) out loud if it isn't currently giving one
-            if (!isReading) {
-              isReading = true;
+            // Generate reading only if not already fetching or reading
+            if (!isReading && !isFetching) {
+              isFetching = true;
               
-              // Generate a procedural Sinhala reading
-              const randomSastra = generateReading();
-              
-              // Update text on screen
-              sastraText.textContent = randomSastra;
+              // Show a loading/mystical state while the AI thinks
+              sastraText.textContent = "ඔබේ දේහ ලක්ෂණ කියවමින් පවතී..."; // "Reading your features..."
               sastraText.classList.add('visible');
               
-              const utterance = new SpeechSynthesisUtterance(randomSastra);
-              utterance.lang = 'si-LK'; // Set language to Sinhala
-              utterance.pitch = 0.4; // Slightly deep
-              utterance.rate = 0.8;  // Deliberate, mystical pacing
-              
-              utterance.onend = () => {
-                // Keep the text visible for a moment after speaking, then fade out
-                setTimeout(() => {
-                  sastraText.classList.remove('visible');
-                  // Add a longer cooldown before the next reading to avoid spam
-                  setTimeout(() => { isReading = false; }, 5000);
-                }, 3000);
-              };
-              
-              window.speechSynthesis.speak(utterance);
+              // Call the Gemini AI
+              generateSastraFromAI().then(aiSastra => {
+                isFetching = false;
+                isReading = true;
+                
+                // Update text on screen with the real AI response
+                sastraText.textContent = aiSastra;
+                
+                const utterance = new SpeechSynthesisUtterance(aiSastra);
+                utterance.lang = 'si-LK'; // Set language to Sinhala
+                utterance.pitch = 0.4; // Slightly deep
+                utterance.rate = 0.8;  // Deliberate, mystical pacing
+                
+                utterance.onend = () => {
+                  // Keep the text visible for a moment after speaking, then fade out
+                  setTimeout(() => {
+                    sastraText.classList.remove('visible');
+                    // Add a longer cooldown before the next reading
+                    setTimeout(() => { isReading = false; }, 5000);
+                  }, 3000);
+                };
+                
+                window.speechSynthesis.speak(utterance);
+              });
             }
           } else {
-            // Only hide the text if the AI is not currently speaking
-            if (!isReading) {
+            // Only hide the text if the AI is not currently speaking or thinking
+            if (!isReading && !isFetching) {
               sastraText.classList.remove('visible');
               videoWrapper.classList.remove('detecting');
             }
@@ -450,6 +449,7 @@
     function stopCamera() {
       isRunning = false;
       isReading = false;
+      isFetching = false;
       window.speechSynthesis.cancel(); // Stop any ongoing speech
       
       if (detectionLoop) {
